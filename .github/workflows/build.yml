@@ -1,9 +1,4 @@
-name: Kernel Builder with Dynamic ZIP Names
-
-on:
-  workflow_dispatch:
-  push:
-    branches: [main]
+name: Optimized Kernel Builder
 
 jobs:
   build:
@@ -11,17 +6,25 @@ jobs:
     timeout-minutes: 60
 
     steps:
-    - name: Checkout code with submodules
+    - name: Checkout code
       uses: actions/checkout@v4
       with:
         submodules: 'recursive'
         fetch-depth: 0
 
-    - name: Generate build tag
-      id: tag
-      run: |
-        BUILD_TAG="build-$(date +'%Y.%m.%d-%H%M')"
-        echo "tag_name=${BUILD_TAG}" >> $GITHUB_OUTPUT
+    - name: Cache submodules
+      uses: actions/cache@v3
+      with:
+        path: |
+          .git/modules
+          */.git
+        key: ${{ runner.os }}-submodules-${{ hashFiles('.gitmodules') }}
+
+    - name: Cache apt packages
+      uses: actions/cache@v3
+      with:
+        path: /var/cache/apt
+        key: ${{ runner.os }}-apt-${{ hashFiles('**/build.sh') }}
 
     - name: Install dependencies
       run: |
