@@ -3,12 +3,11 @@ name: Build Kernel and Release
 on:
   push:
     tags:
-      - 'v*' # Déclenché quand un tag version est poussé (ex: v1.0.0)
-  workflow_dispatch: # Permet de déclencher manuellement
+      - 'v*'
+  workflow_dispatch:
 
 env:
   VERSION: ${{ github.ref_name }}
-  IS_LATEST: ${{ contains(github.ref_name, 'latest') }}
 
 jobs:
   cleanup:
@@ -61,7 +60,7 @@ jobs:
           --debug ${{ matrix.config.debug }}
         
     - name: Upload artifact for ${{ matrix.model }} (${{ matrix.config.release_type }})
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4  # Changé de v3 à v4
       with:
         name: ExtremeKernel-${{ matrix.model }}-${{ matrix.config.release_type }}
         path: build/out/${{ matrix.model }}/ExtremeKernel*.zip
@@ -81,43 +80,37 @@ jobs:
         fi
         
     - name: Download all artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4  # Changé de v3 à v4
       with:
         path: ./artifacts
         
     - name: Create Versioned Release
       if: startsWith(github.ref_name, 'v')
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2  # Changé de v1 à v2
       with:
         tag_name: ${{ github.ref_name }}
         name: ExtremeKernel ${{ steps.version.outputs.VERSION }}
         files: |
           artifacts/ExtremeKernel-*-latest/*.zip
-        draft: false
-        prerelease: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         
     - name: Create Latest Release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         tag_name: latest
         name: ExtremeKernel Latest
         files: |
           artifacts/ExtremeKernel-*-latest/*.zip
-        draft: false
-        prerelease: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         
     - name: Create Debug Release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         tag_name: debug
         name: ExtremeKernel Debug
         files: |
           artifacts/ExtremeKernel-*-debug/*.zip
-        draft: false
-        prerelease: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
