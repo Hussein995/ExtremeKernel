@@ -1,4 +1,4 @@
-name: Kernel Builder with Submodules
+name: Kernel Builder with Dynamic ZIP Names
 
 on:
   workflow_dispatch:
@@ -8,30 +8,20 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 60  # Augmente le timeout si nécessaire
+    timeout-minutes: 60
 
     steps:
     - name: Checkout code with submodules
       uses: actions/checkout@v4
       with:
-        submodules: 'recursive'  # Ceci est crucial pour les submodules
-        fetch-depth: 0  # Important pour les tags
+        submodules: 'recursive'
+        fetch-depth: 0
 
     - name: Generate build tag
       id: tag
       run: |
         BUILD_TAG="build-$(date +'%Y.%m.%d-%H%M')"
         echo "tag_name=${BUILD_TAG}" >> $GITHUB_OUTPUT
-        echo "Generated tag: ${BUILD_TAG}"
-
-    - name: Create and push tag
-      run: |
-        git config --global user.name "GitHub Actions"
-        git config --global user.email "actions@github.com"
-        git tag ${{ steps.tag.outputs.tag_name }}
-        git push origin ${{ steps.tag.outputs.tag_name }}
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Install dependencies
       run: |
@@ -44,7 +34,6 @@ jobs:
     - name: Build kernels
       run: |
         chmod +x build.sh
-        # Liste des modèles à builder
         MODELS=("d1" "d1xks" "d2s" "d2x" "d2xks")
         
         for model in "${MODELS[@]}"; do
@@ -52,11 +41,20 @@ jobs:
           ./build.sh --model "$model" --ksu Y --debug N || exit 1
         done
 
-    - name: Upload artifacts
+    - name: List generated ZIP files (debug)
+      run: |
+        echo "Generated files:"
+        find build/out -name "*.zip" -exec ls -lh {} \;
+
+    - name: Upload artifacts per device
       uses: actions/upload-artifact@v4
       with:
-        name: kernel-builds-${{ steps.tag.outputs.tag_name }}
+        name: kernel-artifacts-${{ steps.tag.outputs.tag_name }}
         path: |
-          build/out/**/ExtremeKernel*.zip
-          build/out/**/*.md5  # Upload aussi les fichiers md5 si existants
+          build/out/d1/*.zip
+          build/out/d1xks/*.zip
+          build/out/d2s/*.zip
+          build/out/d2x/*.zip
+          build/out/d2xks/*.zip
+          build/out/*/*.md5
         if-no-files-found: error
