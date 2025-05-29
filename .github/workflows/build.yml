@@ -1,116 +1,50 @@
-name: Build Kernel and Release
+name: Simple Kernel Builder
 
 on:
+  workflow_dispatch: # Se déclenche manuellement
   push:
-    tags:
-      - 'v*'
-  workflow_dispatch:
-
-env:
-  VERSION: ${{ github.ref_name }}
+    branches: [ main ] # Se déclenche sur push vers main
 
 jobs:
-  cleanup:
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref_name, 'v')
-    runs-on: ubuntu-latest
-    steps:
-      - name: Delete old 'latest' tag
-        uses: actions/github-script@v6
-        with:
-          script: |
-            try {
-              await github.rest.git.deleteRef({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                ref: 'tags/latest'
-              });
-              console.log('Deleted latest tag');
-            } catch (error) {
-              if (error.status !== 404) {
-                throw error;
-              }
-              console.log('Latest tag did not exist');
-            }
-
   build:
-    needs: cleanup
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        config: 
-          - {tag_suffix: '', ksu: 'Y', debug: 'N', release_type: 'latest'}
-          - {tag_suffix: '-debug', ksu: 'n', debug: 'y', release_type: 'debug'}
-        model: ['d1', 'd1xks', 'd2s', 'd2x', 'd2xks']
     
     steps:
-    - name: Checkout repository
+    - name: Checkout code
       uses: actions/checkout@v4
       
+    - name: Generate timestamp tag
+      id: timestamp
+      run: |
+        DATE_TAG=$(date +'build-%Y.%m.%d-%H%M')
+        echo "tag_name=$DATE_TAG" >> $GITHUB_OUTPUT
+        echo "Created tag: $DATE_TAG"
+        
+    - name: Create git tag
+      run: |
+        git tag ${{ steps.timestamp.outputs.tag_name }}
+        git push origin ${{ steps.timestamp.outputs.tag_name }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y git-core gnupg flex bison build-essential zip curl zlib1g-dev libc6-dev-i386 x11proto-core-dev libx11-dev lib32z1-dev libgl1-mesa-dev libxml2-utils xsltproc unzip fontconfig
+        sudo apt-get install -y git-core gnupg flex bison build-essential zip curl \
+        zlib1g-dev libc6-dev-i386 x11proto-core-dev libx11-dev lib32z1-dev \
+        libgl1-mesa-dev libxml2-utils xsltproc unzip fontconfig
         
-    - name: Build Kernel for ${{ matrix.model }} (${{ matrix.config.release_type }})
+    - name: Build kernels
       run: |
         chmod +x build.sh
-        ./build.sh \
-          --model ${{ matrix.model }} \
-          --ksu ${{ matrix.config.ksu }} \
-          --debug ${{ matrix.config.debug }}
+        # Build pour tous les modèles
+        for model in d1 d1xks d2s d2x d2xks; do
+          echo "Building for $model"
+          ./build.sh --model $model --ksu Y --debug N
+        done
         
-    - name: Upload artifact for ${{ matrix.model }} (${{ matrix.config.release_type }})
-      uses: actions/upload-artifact@v4  # Changé de v3 à v4
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
       with:
-        name: ExtremeKernel-${{ matrix.model }}-${{ matrix.config.release_type }}
-        path: build/out/${{ matrix.model }}/ExtremeKernel*.zip
-        
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: Determine version
-      id: version
-      run: |
-        if [[ "${{ github.ref_name }}" == v* ]]; then
-          echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
-        else
-          echo "VERSION=$(date +'%Y.%m.%d')" >> $GITHUB_OUTPUT
-        fi
-        
-    - name: Download all artifacts
-      uses: actions/download-artifact@v4  # Changé de v3 à v4
-      with:
-        path: ./artifacts
-        
-    - name: Create Versioned Release
-      if: startsWith(github.ref_name, 'v')
-      uses: softprops/action-gh-release@v2  # Changé de v1 à v2
-      with:
-        tag_name: ${{ github.ref_name }}
-        name: ExtremeKernel ${{ steps.version.outputs.VERSION }}
-        files: |
-          artifacts/ExtremeKernel-*-latest/*.zip
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        
-    - name: Create Latest Release
-      uses: softprops/action-gh-release@v2
-      with:
-        tag_name: latest
-        name: ExtremeKernel Latest
-        files: |
-          artifacts/ExtremeKernel-*-latest/*.zip
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        
-    - name: Create Debug Release
-      uses: softprops/action-gh-release@v2
-      with:
-        tag_name: debug
-        name: ExtremeKernel Debug
-        files: |
-          artifacts/ExtremeKernel-*-debug/*.zip
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        name: kernel-builds-${{ steps.timestamp.outputs.tag_name }}
+        path: build/out/**/ExtremeKernel*.zip
